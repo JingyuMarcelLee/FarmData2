@@ -9,6 +9,8 @@ services:
       - farmos2_db_fd2.1:/var/lib/postgresql/data
     ports:
       - '5432:5432'
+    networks: 
+      - fd2_public  
     environment:
       POSTGRES_USER: farm
       POSTGRES_PASSWORD: farm
@@ -66,3 +68,8 @@ volumes:
   farmos2_config_fd2.1:
   farmos2_keys_fd2.1:
   fd2dev_home_fd2.3:
+
+networks:
+  # This network is exposed to the outside.
+  fd2_public:   
+    name: farmdata2
