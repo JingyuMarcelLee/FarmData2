@@ -6,13 +6,33 @@ Javascript library of FarmData2 custom reusable functions.
   - `.js` files for the library
   - `.unit.cy.js` files for the unit tests
 
+## farmOS Permissions Checking
+
+A component can check the permissions of the logged in farmOS user using appropriate function in `farmosUtil.js`.
+
+If a permission needs to be checked that is not yet supported it can be added to the `$perms` array in the `permissions` function in `modules/farm_fd2/src/module/Controller/FD2_Controller.php` file.
+
 ## Testing
 
-- `test.bash --unit`
-- `test.bash --unit --glob="**/farmosUtil/*.unit.cy.js"`
-- `test.bash --unit --glob="**/farmosUtil/farmosUtil.getFarmInstance.unit.cy.js"`
+- `test.bash --unit --lib`
+- `test.bash --unit --lib --glob="**/farmosUtil/*.unit.cy.js"`
+- `test.bash --unit --lib --glob="**/farmosUtil/farmosUtil.getFarmInstance.unit.cy.js"`
 
 Any `it` with an `intercept` should include `{ retries: 4 }` to tolerate some of the flake that appears to go with `cy.intercept`.
+
+Best practice is to [reset the database state before tests are run](https://docs.cypress.io/guides/references/best-practices#State-reset-should-go-before-each-test). Doing this before every test or even at the start of every file adds significantly to the runtime of the test suite. FarmData2 compromises by resetting the database to the DB that was most recently installed (i.e. using `installDB.bash`) before each test run. A test run is one cypress command (e.g. as is done by `test.bash --comp`). Any test that absolutely requires a clean database (i.e. cannot tolerate changes made by prior tests) can reset it in its `before` hook using the following code:
+
+```Javascript
+  before(() => {
+    cy.task('initDB');
+  });
+```
+
+Use: `cy.task('log', 'message')` to log messages to the console.
+Use: `cy.task('logObject', obj)` to log an object to the console.
+
+- Visible in the console when running headless.
+- Click on the task in the test events output to print to console in Cypress gui.
 
 ## Documentation
 
@@ -48,6 +68,7 @@ Minimum expectations:
 
 Other tags that are often useful:
 
+- `@category` - organizing the functions in a module into categories.
 - [`@example`](https://jsdoc.app/tags-example.html) - as appropriate.
   - example starts on next line and continues until next tag or end of comment.
 - [`@link`](https://jsdoc.app/tags-inline-link.html) - links inline with text.

@@ -1,13 +1,5 @@
 import * as farmosUtil from './farmosUtil.js';
 
-/*
- * NOTE: The tests in this file assume that they are run
- * in order. This is a necessary assumption because they are
- * testing the caching behavior of the farmOS object, the
- * authentication token and the schema.  To do so, later tests
- * must rely on earlier tests having cached these items.
- */
-
 describe('Test getFarmOSInstance', () => {
   beforeEach(() => {
     cy.restoreLocalStorage();
@@ -19,24 +11,20 @@ describe('Test getFarmOSInstance', () => {
     cy.saveSessionStorage();
   });
 
-  var prev_farm = null;
-
   // Use the farm instance to fetch data to be sure it is valid.
-  function useFarm(farm) {
-    cy.wrap(
-      farm.user.fetch({
+  async function useFarm(farm) {
+    await farm.user
+      .fetch({
         filter: {
           type: 'user--user',
-          status: true,
         },
-        limit: Infinity,
       })
-    ).then((resp) => {
-      expect(resp.data).to.not.be.null;
-      expect(resp.data.length).to.equal(9);
-      expect(resp.data[0].type).to.equal('user--user');
-      expect(resp.data[1].attributes.display_name).to.equal('manager1');
-    });
+      .then((resp) => {
+        expect(resp.data).to.not.be.null;
+        expect(resp.data.length).to.equal(10);
+        expect(resp.data[0].type).to.equal('user--user');
+        expect(resp.data[2].attributes.display_name).to.equal('manager1');
+      });
   }
 
   it('Check getting the first instance', { retries: 4 }, () => {
@@ -56,26 +44,37 @@ describe('Test getFarmOSInstance', () => {
     cy.intercept('POST', 'oauth/token').as('getToken');
     cy.intercept('GET', '**/api/**/schema').as('fetchSchema');
 
+    farmosUtil.clearFarmGlobal();
+    localStorage.clear();
+    sessionStorage.clear();
+
     expect(farmosUtil.getFarmGlobal()).to.be.null;
     expect(localStorage.getItem('token')).to.be.null;
     expect(sessionStorage.getItem('schema')).to.be.null;
 
-    cy.wrap(
-      farmosUtil.getFarmOSInstance('http://farmos', 'farm', 'admin', 'admin')
-    ).then((newFarm) => {
+    cy.wrap(farmosUtil.getFarmOSInstance())
+      .as('originalFarm')
+      .then(() => {
+        cy.wrap(farmosUtil.getFarmOSInstance()).as('newFarm');
+      });
+
+    cy.get('@newFarm').then((newFarm) => {
       expect(newFarm).to.not.be.null;
       expect(newFarm.remote.getToken()).to.not.be.null;
       expect(newFarm.schema.get()).to.not.be.null;
 
-      useFarm(newFarm);
-
       cy.get('@getToken.all').should('have.length', 1);
-      cy.get('@fetchSchema.all').should('have.length.at.least', 23); // base farmOS?
+      cy.get('@fetchSchema.all').should('have.length.at.least', 23); // base farmOS
 
       expect(farmosUtil.getFarmGlobal()).to.not.be.null;
-      prev_farm = newFarm;
-      expect(localStorage.getItem('token')).to.not.be.null;
+      expect(localStorage.getItem('farmOStoken')).to.not.be.null;
       expect(sessionStorage.getItem('schema')).to.not.be.null;
+
+      cy.wrap(useFarm(newFarm));
+    });
+
+    cy.getAll(['@originalFarm', '@newFarm']).then(([originalFarm, newFarm]) => {
+      expect(originalFarm === newFarm).to.be.true;
     });
   });
 
@@ -94,30 +93,38 @@ describe('Test getFarmOSInstance', () => {
       // - check that token is saved in local storage
       // - check that schema is saved in session storage
 
-      cy.intercept('POST', 'oauth/token').as('getToken');
-      cy.intercept('GET', '**/api/**/schema').as('fetchSchema');
+      cy.wrap(farmosUtil.getFarmOSInstance())
+        .as('originalFarm')
+        .then(() => {
+          expect(farmosUtil.getFarmGlobal()).to.not.be.null;
+          expect(localStorage.getItem('farmOStoken')).to.not.be.null;
+          expect(sessionStorage.getItem('schema')).to.not.be.null;
 
-      expect(farmosUtil.getFarmGlobal()).to.not.be.null;
-      expect(localStorage.getItem('token')).to.not.be.null;
-      expect(sessionStorage.getItem('schema')).to.not.be.null;
+          cy.intercept('POST', 'oauth/token').as('getToken');
+          cy.intercept('GET', '**/api/**/schema').as('fetchSchema');
 
-      cy.wrap(
-        farmosUtil.getFarmOSInstance('http://farmos', 'farm', 'admin', 'admin')
-      ).then((newFarm) => {
-        expect(newFarm).to.not.be.null;
-        expect(newFarm.remote.getToken()).to.not.be.null;
-        expect(newFarm.schema.get()).to.not.be.null;
+          cy.wrap(farmosUtil.getFarmOSInstance()).as('secondFarm');
+        });
 
-        expect(newFarm === prev_farm).to.be.true;
-
-        useFarm(newFarm);
+      cy.get('@secondFarm').then((secondFarm) => {
+        expect(secondFarm).to.not.be.null;
+        expect(secondFarm.remote.getToken()).to.not.be.null;
+        expect(secondFarm.schema.get()).to.not.be.null;
 
         cy.get('@getToken.all').should('have.length', 0);
         cy.get('@fetchSchema.all').should('have.length', 0);
 
-        expect(localStorage.getItem('token')).to.not.be.null;
+        expect(localStorage.getItem('farmOStoken')).to.not.be.null;
         expect(sessionStorage.getItem('schema')).to.not.be.null;
+
+        cy.wrap(useFarm(secondFarm));
       });
+
+      cy.getAll(['@originalFarm', '@secondFarm']).then(
+        ([originalFarm, secondFarm]) => {
+          expect(originalFarm === secondFarm).to.be.true;
+        }
+      );
     }
   );
 
@@ -128,38 +135,47 @@ describe('Test getFarmOSInstance', () => {
     // - check that token is not in local storage.
     // - Get a farm object
     // - check it has token & schema
-    // - check it is the same farm object as last instance
+    // - check it is a different farm object as last instance
     // - check that it can be used to get info from server
     // - check that it did fetch the token
     // - check that it did not fetch the schema
     // - check that token is saved in local storage
     // - check that schema is saved in session storage
 
-    cy.intercept('POST', 'oauth/token').as('getToken');
-    cy.intercept('GET', '**/api/**/schema').as('fetchSchema');
+    cy.wrap(farmosUtil.getFarmOSInstance())
+      .as('originalFarm')
+      .then(() => {
+        localStorage.clear();
+        expect(farmosUtil.getFarmGlobal()).to.not.be.null;
+        expect(localStorage.getItem('farmOStoken')).to.be.null;
+        expect(sessionStorage.getItem('schema')).to.not.be.null;
 
-    localStorage.clear();
-    expect(farmosUtil.getFarmGlobal()).to.not.be.null;
-    expect(localStorage.getItem('token')).to.be.null;
-    expect(sessionStorage.getItem('schema')).to.not.be.null;
+        cy.intercept('POST', 'oauth/token').as('getToken');
+        cy.intercept('GET', '**/api/**/schema').as('fetchSchema');
 
-    cy.wrap(
-      farmosUtil.getFarmOSInstance('http://farmos', 'farm', 'admin', 'admin')
-    ).then((newFarm) => {
-      expect(newFarm).to.not.be.null;
-      expect(newFarm.remote.getToken()).to.not.be.null;
-      expect(newFarm.schema.get()).to.not.be.null;
+        cy.wrap(farmosUtil.getFarmOSInstance()).as('secondFarm');
+      });
 
-      expect(newFarm === prev_farm).to.be.true;
-
-      useFarm(newFarm);
+    cy.get('@secondFarm').then((secondFarm) => {
+      expect(secondFarm).to.not.be.null;
+      expect(secondFarm.remote.getToken()).to.not.be.null;
+      expect(secondFarm.schema.get()).to.not.be.null;
 
       cy.get('@getToken.all').should('have.length', 1);
       cy.get('@fetchSchema.all').should('have.length', 0);
 
-      expect(localStorage.getItem('token')).to.not.be.null;
+      expect(localStorage.getItem('farmOStoken')).to.not.be.null;
       expect(sessionStorage.getItem('schema')).to.not.be.null;
+
+      cy.wrap(useFarm(secondFarm));
     });
+
+    cy.getAll(['@originalFarm', '@secondFarm']).then(
+      ([originalFarm, secondFarm]) => {
+        // Need to create a whole new farmOS object in this case.
+        expect(originalFarm != secondFarm).to.be.true;
+      }
+    );
   });
 
   it('Clear the farm_global.', { retries: 4 }, () => {
@@ -176,32 +192,39 @@ describe('Test getFarmOSInstance', () => {
     // - check that token is saved in local storage
     // - check that schema is saved in session storage
 
-    cy.intercept('POST', 'oauth/token').as('getToken');
-    cy.intercept('GET', '**/api/**/schema').as('fetchSchema');
+    cy.wrap(farmosUtil.getFarmOSInstance())
+      .as('originalFarm')
+      .then(() => {
+        farmosUtil.clearFarmGlobal();
+        expect(farmosUtil.getFarmGlobal()).to.be.null;
+        expect(localStorage.getItem('farmOStoken')).to.not.be.null;
+        expect(sessionStorage.getItem('schema')).to.not.be.null;
 
-    farmosUtil.clearFarmGlobal();
-    expect(farmosUtil.getFarmGlobal()).to.be.null;
-    expect(localStorage.getItem('token')).to.not.be.null;
-    expect(sessionStorage.getItem('schema')).to.not.be.null;
+        cy.intercept('POST', 'oauth/token').as('getToken');
+        cy.intercept('GET', '**/api/**/schema').as('fetchSchema');
 
-    cy.wrap(
-      farmosUtil.getFarmOSInstance('http://farmos', 'farm', 'admin', 'admin')
-    ).then((newFarm) => {
-      expect(newFarm).to.not.be.null;
-      expect(newFarm.remote.getToken()).to.not.be.null;
-      expect(newFarm.schema.get()).to.not.be.null;
+        cy.wrap(farmosUtil.getFarmOSInstance()).as('secondFarm');
+      });
 
-      expect(newFarm != prev_farm).to.be.true;
-      prev_farm = newFarm;
+    cy.get('@secondFarm').then((secondFarm) => {
+      expect(secondFarm).to.not.be.null;
+      expect(secondFarm.remote.getToken()).to.not.be.null;
+      expect(secondFarm.schema.get()).to.not.be.null;
 
-      useFarm(newFarm);
+      cy.wrap(useFarm(secondFarm));
 
       cy.get('@getToken.all').should('have.length', 0);
       cy.get('@fetchSchema.all').should('have.length', 0);
 
-      expect(localStorage.getItem('token')).to.not.be.null;
+      expect(localStorage.getItem('farmOStoken')).to.not.be.null;
       expect(sessionStorage.getItem('schema')).to.not.be.null;
     });
+
+    cy.getAll(['@originalFarm', '@secondFarm']).then(
+      ([originalFarm, secondFarm]) => {
+        expect(originalFarm != secondFarm).to.be.true;
+      }
+    );
   });
 
   it('Clear the farm_global and session storage.', { retries: 4 }, () => {
@@ -219,33 +242,40 @@ describe('Test getFarmOSInstance', () => {
     // - check that token is saved in local storage
     // - check that schema is saved in session storage
 
-    cy.intercept('POST', 'oauth/token').as('getToken');
-    cy.intercept('GET', '**/api/**/schema').as('fetchSchema');
+    cy.wrap(farmosUtil.getFarmOSInstance())
+      .as('originalFarm')
+      .then(() => {
+        farmosUtil.clearFarmGlobal();
+        sessionStorage.clear();
+        expect(farmosUtil.getFarmGlobal()).to.be.null;
+        expect(localStorage.getItem('farmOStoken')).to.not.be.null;
+        expect(sessionStorage.getItem('schema')).to.be.null;
 
-    farmosUtil.clearFarmGlobal();
-    sessionStorage.clear();
-    expect(farmosUtil.getFarmGlobal()).to.be.null;
-    expect(localStorage.getItem('token')).to.not.be.null;
-    expect(sessionStorage.getItem('schema')).to.be.null;
+        cy.intercept('POST', 'oauth/token').as('getToken');
+        cy.intercept('GET', '**/api/**/schema').as('fetchSchema');
 
-    cy.wrap(
-      farmosUtil.getFarmOSInstance('http://farmos', 'farm', 'admin', 'admin')
-    ).then((newFarm) => {
-      expect(newFarm).to.not.be.null;
-      expect(newFarm.remote.getToken()).to.not.be.null;
-      expect(newFarm.schema.get()).to.not.be.null;
+        cy.wrap(farmosUtil.getFarmOSInstance()).as('secondFarm');
+      });
 
-      expect(newFarm != prev_farm).to.be.true;
-      prev_farm = newFarm;
+    cy.get('@secondFarm').then((secondFarm) => {
+      expect(secondFarm).to.not.be.null;
+      expect(secondFarm.remote.getToken()).to.not.be.null;
+      expect(secondFarm.schema.get()).to.not.be.null;
 
-      useFarm(newFarm);
+      cy.wrap(useFarm(secondFarm));
 
       cy.get('@getToken.all').should('have.length', 0);
       cy.get('@fetchSchema.all').should('have.length.at.least', 23); // base farmOS
 
-      expect(localStorage.getItem('token')).to.not.be.null;
+      expect(localStorage.getItem('farmOStoken')).to.not.be.null;
       expect(sessionStorage.getItem('schema')).to.not.be.null;
     });
+
+    cy.getAll(['@originalFarm', '@secondFarm']).then(
+      ([originalFarm, secondFarm]) => {
+        expect(originalFarm != secondFarm).to.be.true;
+      }
+    );
   });
 
   it('Clear everything.', { retries: 4 }, () => {
@@ -264,32 +294,135 @@ describe('Test getFarmOSInstance', () => {
     // - check that token is saved in local storage
     // - check that schema is saved in session storage
 
-    cy.intercept('POST', 'oauth/token').as('getToken');
-    cy.intercept('GET', '**/api/**/schema').as('fetchSchema');
+    cy.wrap(farmosUtil.getFarmOSInstance())
+      .as('originalFarm')
+      .then(() => {
+        farmosUtil.clearFarmGlobal();
+        sessionStorage.clear();
+        localStorage.clear();
+        expect(farmosUtil.getFarmGlobal()).to.be.null;
+        expect(localStorage.getItem('farmOStoken')).to.be.null;
+        expect(sessionStorage.getItem('schema')).to.be.null;
 
-    farmosUtil.clearFarmGlobal();
-    sessionStorage.clear();
-    localStorage.clear();
-    expect(farmosUtil.getFarmGlobal()).to.be.null;
-    expect(localStorage.getItem('token')).to.be.null;
-    expect(sessionStorage.getItem('schema')).to.be.null;
+        cy.intercept('POST', 'oauth/token').as('getToken');
+        cy.intercept('GET', '**/api/**/schema').as('fetchSchema');
 
-    cy.wrap(
-      farmosUtil.getFarmOSInstance('http://farmos', 'farm', 'admin', 'admin')
-    ).then((newFarm) => {
-      expect(newFarm).to.not.be.null;
-      expect(newFarm.remote.getToken()).to.not.be.null;
-      expect(newFarm.schema.get()).to.not.be.null;
+        cy.wrap(farmosUtil.getFarmOSInstance()).as('secondFarm');
+      });
 
-      useFarm(newFarm);
+    cy.get('@secondFarm').then((secondFarm) => {
+      expect(secondFarm).to.not.be.null;
+      expect(secondFarm.remote.getToken()).to.not.be.null;
+      expect(secondFarm.schema.get()).to.not.be.null;
+
+      cy.wrap(useFarm(secondFarm));
 
       cy.get('@getToken.all').should('have.length', 1);
       cy.get('@fetchSchema.all').should('have.length.at.least', 23); // base farmOS
 
       expect(farmosUtil.getFarmGlobal()).to.not.be.null;
-      prev_farm = newFarm;
-      expect(localStorage.getItem('token')).to.not.be.null;
+      expect(localStorage.getItem('farmOStoken')).to.not.be.null;
       expect(sessionStorage.getItem('schema')).to.not.be.null;
     });
+
+    cy.getAll(['@originalFarm', '@secondFarm']).then(
+      ([originalFarm, secondFarm]) => {
+        expect(originalFarm != secondFarm).to.be.true;
+      }
+    );
+  });
+
+  it('Test writing to farmOS.', () => {
+    cy.wrap(farmosUtil.getFarmOSInstance())
+      .as('newFarm')
+      .then((newFarm) => {
+        // Create a log in farmOS.
+        const p1 = {
+          type: 'log--activity',
+          name: 'test log',
+          notes: 'testing writes to farmOS',
+        };
+        const a1 = newFarm.log.create(p1);
+        cy.wrap(newFarm.log.send(a1)).as('sendLog');
+      });
+
+    cy.getAll(['@newFarm', '@sendLog']).then(([newFarm, sendLog]) => {
+      // fetch the created log.
+      cy.wrap(
+        newFarm.log
+          .fetch({
+            filter: { type: 'log--activity', id: sendLog.id },
+          })
+          .then((res) => {
+            return res.data[0];
+          })
+      ).as('fetchLog');
+    });
+
+    cy.get('@fetchLog').then((fetchLog) => {
+      expect(fetchLog.type).to.equal('log--activity');
+      expect(fetchLog.id).to.equal(fetchLog.id);
+      expect(fetchLog.attributes.name).to.equal('test log');
+      expect(fetchLog.attributes.notes.value).to.equal(
+        'testing writes to farmOS'
+      );
+    });
+  });
+
+  it('Test switching users.', () => {
+    cy.wrap(farmosUtil.getFarmOSInstance())
+      .as('adminFarm')
+      .then((adminFarm) => {
+        cy.wrap(adminFarm.user.fetch({ filter: { type: 'user--user' } })).as(
+          'adminUsers'
+        );
+      })
+      .then(() => {
+        cy.wrap(
+          farmosUtil.getFarmOSInstance(
+            'http://farmos',
+            'farm',
+            'guest',
+            'farmdata2'
+          )
+        )
+          .as('guestFarm')
+          .then((guestFarm) => {
+            cy.wrap(
+              guestFarm.user.fetch({ filter: { type: 'user--user' } })
+            ).as('guestUsers');
+          });
+      });
+
+    cy.get('@adminUsers').then((users) => {
+      expect(users.data.length).to.equal(10);
+      // The admin user gets role data when fetching.
+      expect(users.data[2].relationships.roles).to.have.length(3);
+    });
+
+    cy.get('@guestUsers').then((users) => {
+      expect(users.data.length).to.equal(10);
+      // The guest user does not get role data when fetching but admin does.
+      expect(users.data[2].relationships.roles).to.not.exist;
+    });
+
+    cy.getAll(['@adminFarm', '@guestFarm']).then(([adminFarm, guestFarm]) => {
+      expect(adminFarm != guestFarm).to.be.true;
+    });
+  });
+
+  it('Error when not all params are provided.', () => {
+    cy.wrap(
+      farmosUtil
+        .getFarmOSInstance('http://farmos', 'farm')
+        .then(() => {
+          throw new Error('Should have thrown an error');
+        })
+        .catch((e) => {
+          expect(e.message).to.contain(
+            'Invalid arguments passed to getFarmOSInstance'
+          );
+        })
+    );
   });
 });

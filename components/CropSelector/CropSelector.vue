@@ -1,17 +1,19 @@
 <template>
-  <SelectorBase
-    id="crop-selector"
-    data-cy="crop-selector"
-    label="Crop"
-    invalidFeedbackText="A crop is required"
-    v-bind:addOptionUrl="addCropUrl"
-    v-bind:options="cropList"
-    v-bind:required="required"
-    v-bind:selected="selected"
-    v-bind:showValidityStyling="showValidityStyling"
-    v-on:update:selected="handleUpdateSelected($event)"
-    v-on:valid="handleValid($event)"
-  />
+  <div>
+    <SelectorBase
+      id="crop-selector"
+      data-cy="crop-selector"
+      label="Crop"
+      invalidFeedbackText="A crop is required"
+      v-bind:addOptionUrl="addCropUrl"
+      v-bind:options="cropList"
+      v-bind:required="required"
+      v-bind:selected="selected"
+      v-bind:showValidityStyling="showValidityStyling"
+      v-on:update:selected="handleUpdateSelected($event)"
+      v-on:valid="handleValid($event)"
+    />
+  </div>
 </template>
 
 <script>
@@ -76,11 +78,16 @@ export default {
   data() {
     return {
       cropList: [],
+      canCreateCrop: false,
     };
   },
   computed: {
     addCropUrl() {
-      return '/admin/structure/taxonomy/manage/plant_type/add';
+      if (this.canCreateCrop) {
+        return '/admin/structure/taxonomy/manage/plant_type/add';
+      } else {
+        return null;
+      }
     },
   },
   methods: {
@@ -101,10 +108,13 @@ export default {
   },
   watch: {},
   created() {
-    farmosUtil
-      .getCropNameToTermMap()
-      .then((cropMap) => {
+    let canCreate = farmosUtil.checkPermission('create-plant-asset');
+    let cropMap = farmosUtil.getCropNameToTermMap();
+
+    Promise.all([canCreate, cropMap])
+      .then(([canCreate, cropMap]) => {
         this.cropList = Array.from(cropMap.keys());
+        this.canCreateCrop = canCreate;
 
         /**
          * The select has been populated with the list of crops and the component is ready to be used.

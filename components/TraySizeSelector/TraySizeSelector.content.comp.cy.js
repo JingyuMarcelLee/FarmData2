@@ -24,6 +24,7 @@ describe('Test the TraySizeSelector content', () => {
       .should('have.been.calledOnce')
       .then(() => {
         cy.get('[data-cy="tray-size-selector"]').should('exist');
+        cy.get('[data-cy="selector-group"]').should('exist');
       });
   });
 
@@ -43,12 +44,34 @@ describe('Test the TraySizeSelector content', () => {
       });
   });
 
+  it('Test that tray sizes are loaded', () => {
+    const readySpy = cy.spy().as('readySpy');
+
+    cy.mount(TraySizeSelector, {
+      props: {
+        onReady: readySpy,
+      },
+    });
+
+    cy.get('@readySpy')
+      .should('have.been.calledOnce')
+      .then(() => {
+        cy.get('[data-cy="selector-input"]')
+          .find('option')
+          .should('have.length', 7);
+        cy.get('[data-cy="selector-option-1"]').should('have.text', '50');
+        cy.get('[data-cy="selector-option-6"]').should('have.text', '288');
+      });
+  });
+
   it('Check that props are passed through to the SelectorBase', () => {
     const readySpy = cy.spy().as('readySpy');
 
     cy.mount(TraySizeSelector, {
       props: {
         required: true,
+        showValidityStyling: true,
+        selected: '288',
         onReady: readySpy,
       },
     });
@@ -62,25 +85,8 @@ describe('Test the TraySizeSelector content', () => {
           'contain.text',
           'A tray size is required'
         );
-      });
-  });
-
-  it('Test add url for tray sizes', () => {
-    const readySpy = cy.spy().as('readySpy');
-
-    cy.mount(TraySizeSelector, {
-      props: {
-        onReady: readySpy,
-      },
-    });
-
-    cy.get('@readySpy')
-      .should('have.been.calledOnce')
-      .then(() => {
-        cy.get('[data-cy="selector-add-button"]')
-          .should('have.attr', 'href')
-          .then((href) => href)
-          .should('eq', '/admin/structure/taxonomy/manage/tray_size/add');
+        cy.get('[data-cy="selector-input"]').should('have.class', 'is-valid');
+        cy.get('[data-cy="selector-input"]').should('have.value', '288');
       });
   });
 });

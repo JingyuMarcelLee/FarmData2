@@ -1,17 +1,19 @@
 <template>
-  <SelectorBase
-    id="tray-size-selector"
-    data-cy="tray-size-selector"
-    label="Tray Size"
-    invalidFeedbackText="A tray size is required"
-    v-bind:addOptionUrl="addTraySizeUrl"
-    v-bind:options="traySizeList"
-    v-bind:required="required"
-    v-bind:selected="selected"
-    v-bind:showValidityStyling="showValidityStyling"
-    v-on:update:selected="handleUpdateSelected($event)"
-    v-on:valid="handleValid($event)"
-  />
+  <div>
+    <SelectorBase
+      id="tray-size-selector"
+      data-cy="tray-size-selector"
+      label="Tray Size"
+      invalidFeedbackText="A tray size is required"
+      v-bind:addOptionUrl="addTraySizeUrl"
+      v-bind:options="traySizeList"
+      v-bind:required="required"
+      v-bind:selected="selected"
+      v-bind:showValidityStyling="showValidityStyling"
+      v-on:update:selected="handleUpdateSelected($event)"
+      v-on:valid="handleValid($event)"
+    />
+  </div>
 </template>
 
 <script>
@@ -78,11 +80,16 @@ export default {
   data() {
     return {
       traySizeList: [],
+      canCreateTraySize: false,
     };
   },
   computed: {
     addTraySizeUrl() {
-      return '/admin/structure/taxonomy/manage/tray_size/add';
+      if (this.canCreateTraySize) {
+        return '/admin/structure/taxonomy/manage/tray_size/add';
+      } else {
+        return null;
+      }
     },
   },
   methods: {
@@ -103,10 +110,13 @@ export default {
   },
   watch: {},
   created() {
-    farmosUtil
-      .getTraySizeToTermMap()
-      .then((traySizeMap) => {
-        this.traySizeList = Array.from(traySizeMap.keys());
+    let canCreate = farmosUtil.checkPermission('create-terms-in-tray_size');
+    let trayMap = farmosUtil.getTraySizeToTermMap();
+
+    Promise.all([canCreate, trayMap])
+      .then(([canCreate, trayMap]) => {
+        this.traySizeList = Array.from(trayMap.keys());
+        this.canCreateTraySize = canCreate;
 
         /**
          * The select has been populated with the list of tray sizes and the component is ready to be used.

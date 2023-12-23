@@ -1,17 +1,19 @@
 <template>
-  <SelectorBase
-    id="location-selector"
-    data-cy="location-selector"
-    label="Location"
-    invalidFeedbackText="A location is required"
-    v-bind:addOptionUrl="addLocationUrl"
-    v-bind:options="locationList"
-    v-bind:required="required"
-    v-bind:selected="selected"
-    v-bind:showValidityStyling="showValidityStyling"
-    v-on:update:selected="handleUpdateSelected($event)"
-    v-on:valid="handleValid($event)"
-  />
+  <div>
+    <SelectorBase
+      id="location-selector"
+      data-cy="location-selector"
+      label="Location"
+      invalidFeedbackText="A location is required"
+      v-bind:addOptionUrl="addLocationUrl"
+      v-bind:options="locationList"
+      v-bind:required="required"
+      v-bind:selected="selected"
+      v-bind:showValidityStyling="showValidityStyling"
+      v-on:update:selected="handleUpdateSelected($event)"
+      v-on:valid="handleValid($event)"
+    />
+  </div>
 </template>
 
 <script>
@@ -91,17 +93,26 @@ export default {
   data() {
     return {
       locationList: [],
+      canCreateLand: false,
+      canCreateStructure: false,
     };
   },
   computed: {
     addLocationUrl() {
       // return the appropriate url for land, structure or just asset if both
-      if (this.includeFields && this.includeGreenhouses) {
+      if (
+        this.includeFields &&
+        this.includeGreenhouses &&
+        this.canCreateLand &&
+        this.canCreateStructure
+      ) {
         return '/asset/add';
-      } else if (this.includeFields) {
+      } else if (this.includeFields && this.canCreateLand) {
         return '/asset/add/land';
-      } else {
+      } else if (this.includeGreenhouses && this.canCreateStructure) {
         return '/asset/add/structure';
+      } else {
+        return null;
       }
     },
   },
@@ -123,31 +134,37 @@ export default {
   },
   watch: {},
   created() {
-    let fieldsAndBeds = [];
+    let land = [];
+    let canCreateLand = false;
     if (this.includeFields) {
-      fieldsAndBeds = farmosUtil
-        .getFieldOrBedNameToAssetMap()
-        .then((fieldMap) => {
-          let fields = Array.from(fieldMap.keys());
-          return fields;
-        });
+      canCreateLand = farmosUtil.checkPermission('create-land-asset');
+
+      land = farmosUtil.getFieldOrBedNameToAssetMap().then((fieldMap) => {
+        let fields = Array.from(fieldMap.keys());
+        return fields;
+      });
     }
 
-    let greenhouses = [];
+    let structures = [];
+    let canCreateStructure = false;
     if (this.includeGreenhouses) {
-      greenhouses = farmosUtil
+      canCreateStructure = farmosUtil.checkPermission('create-structure-asset');
+
+      structures = farmosUtil
         .getGreenhouseNameToAssetMap()
         .then((greenhouseMap) => {
-          let greenhouses = Array.from(greenhouseMap.keys());
-          return greenhouses;
+          let gh = Array.from(greenhouseMap.keys());
+          return gh;
         });
     }
 
-    Promise.all([fieldsAndBeds, greenhouses])
-      .then((allLocations) => {
-        //const allLocationsList = allLocations[0].concat(allLocations[1]);
-        const allLocationsList = [...allLocations[0], ...allLocations[1]];
+    Promise.all([land, structures, canCreateLand, canCreateStructure])
+      .then(([land, structures, createLand, createStructure]) => {
+        const allLocationsList = [...land, ...structures];
         this.locationList = allLocationsList.sort();
+
+        this.canCreateLand = createLand;
+        this.canCreateStructure = createStructure;
 
         /**
          * The select has been populated with the list of locations and the component is ready to be used.
