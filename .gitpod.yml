@@ -1,0 +1,5 @@
+
+tasks:
+    - name: Launch FarmData2
+      init: ./bin/fd2-up.bash
+          
