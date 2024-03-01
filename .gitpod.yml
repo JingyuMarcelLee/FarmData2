@@ -1,8 +1,8 @@
 
+image: ubuntu:latest
+workspaceLocation: '.'
 tasks:
     - name: Launch FarmData2
       init: npm install
-      before: sh ./bin/fd2-up.gitpod.bash
-      command: ./bin/installDB.bash
-    - name: launch FarmData
-      command: npm run build:fd2
+      command: sh ./bin/fd2-up.gitpod.bash
+
