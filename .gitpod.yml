@@ -2,11 +2,7 @@
 tasks:
     - name: Launch FarmData2
       init: npm install
-      before: ./bin/fd2-up.gitpod.bash
-      command:
-        npm run build:fd2
-        npm run build:examples
-        npm run build:school
-
-        installDB.bash
-          
+      before: sh ./bin/fd2-up.gitpod.bash
+      command: ./bin/installDB.bash
+    - name: launch FarmData
+      command: npm run build:fd2
